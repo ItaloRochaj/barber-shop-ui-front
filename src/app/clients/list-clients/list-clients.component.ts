@@ -33,6 +33,7 @@ export class ListClientsComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.httpSubscriptions.push(this.httpService.list().subscribe(data => this.clients = data))
+    console.log(this.clients)
   }
   ngOnDestroy(): void {
     this.httpSubscriptions.forEach(s => s.unsubscribe())
