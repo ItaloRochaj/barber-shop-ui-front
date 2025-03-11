@@ -48,78 +48,100 @@ import { Subscription } from 'rxjs';
 })
 export class ScheduleCalendarComponent implements OnDestroy, AfterViewInit, OnChanges {
 
-  private subscription?: Subscription
+  private subscription?: Subscription;
 
   private _selected: Date = new Date();
 
   displayedColumns: string[] = ['startAt', 'endAt', 'client', 'actions'];
 
-  dataSource!: MatTableDataSource<ClientScheduleAppointmentModel>
+  dataSource!: MatTableDataSource<ClientScheduleAppointmentModel>;
 
-  addingSchedule: boolean = false
+  addingSchedule: boolean = false;
 
-  newSchedule: SaveScheduleModel = { startAt: undefined, endAt: undefined, clientId: undefined }
+  newSchedule: SaveScheduleModel = { startAt: undefined, endAt: undefined, clientId: undefined };
 
-  clientSelectFormControl = new FormControl()
+  clientSelectFormControl = new FormControl();
 
-  @Input() monthSchedule!: ScheduleAppointementMonthModel
-  @Input() clients: SelectClientModel[] = []
+  @Input() monthSchedule!: ScheduleAppointementMonthModel;
+  @Input() clients: SelectClientModel[] = [];
 
-  @Output() onDateChange = new EventEmitter<Date>()
-  @Output() onConfirmDelete = new EventEmitter<ClientScheduleAppointmentModel>()
-  @Output() onScheduleClient = new EventEmitter<SaveScheduleModel>()
+  @Output() onDateChange = new EventEmitter<Date>();
+  @Output() onConfirmDelete = new EventEmitter<ClientScheduleAppointmentModel>();
+  @Output() onScheduleClient = new EventEmitter<SaveScheduleModel>();
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator
+  @ViewChild(MatPaginator) paginator!: MatPaginator;
 
   constructor(@Inject(SERVICES_TOKEN.DIALOG) private readonly dialogManagerService: IDialogManagerService) { }
 
   get selected(): Date {
-    return this._selected
+    return this._selected;
   }
 
   set selected(selected: Date) {
     if (this._selected.getTime() !== selected.getTime()) {
-      this.onDateChange.emit(selected)
-      this.buildTable()
-      this._selected = selected
+      this._selected = selected; // Atualiza primeiro
+      this.onDateChange.emit(selected);
+      this.buildTable();
     }
   }
 
   ngOnDestroy(): void {
     if (this.subscription) {
-      this.subscription.unsubscribe()
+      this.subscription.unsubscribe();
     }
   }
 
   ngAfterViewInit(): void {
     if (this.dataSource && this.paginator) {
-      this.dataSource.paginator = this.paginator
+      this.dataSource.paginator = this.paginator;
     }
   }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['monthSchedule'] && this.monthSchedule) {
-      this.buildTable()
+      this.buildTable();
     }
   }
 
   onSubmit(form: NgForm) {
-    const startAt = new Date(this._selected)
-    const endAt = new Date(this._selected)
-    startAt.setHours(this.newSchedule.startAt!.getHours(), this.newSchedule.startAt!.getMinutes())
-    endAt.setHours(this.newSchedule.endAt!.getHours(), this.newSchedule.endAt!.getMinutes())
+    // Validação para evitar acessar propriedades de um objeto undefined
+    if (!this.monthSchedule || !this.monthSchedule.scheduledAppointments) {
+      console.error('monthSchedule não está inicializado corretamente');
+      return;
+    }
+
+    if (!this.newSchedule.startAt || !this.newSchedule.endAt || !this.newSchedule.clientId) {
+      console.error('Dados do novo agendamento estão incompletos');
+      return;
+    }
+
+    const startAt = new Date(this._selected);
+    const endAt = new Date(this._selected);
+    startAt.setHours(this.newSchedule.startAt.getHours(), this.newSchedule.startAt.getMinutes());
+    endAt.setHours(this.newSchedule.endAt.getHours(), this.newSchedule.endAt.getMinutes());
+
+    // Procura o nome do cliente com base no clientId informado
+    const client = this.clients.find(c => c.id === this.newSchedule.clientId);
+    if (!client) {
+      console.error('Cliente não encontrado');
+      return;
+    }
+
     const saved: ClientScheduleAppointmentModel = {
       id: -1,
       day: this._selected.getDate(),
       startAt,
       endAt,
-      clientId: this.newSchedule.clientId!,
-      clientName: this.clients.find(c => c.id === this.newSchedule.clientId!)!.name
-    }
-    this.monthSchedule.scheduledAppointments.push(saved)
-    this.onScheduleClient.emit(saved)
-    this.buildTable()
-    form.resetForm()
-    this.newSchedule = { startAt: undefined, endAt: undefined, clientId: undefined }
+      clientId: this.newSchedule.clientId,
+      clientName: client.name
+    };
+
+    // Adiciona o novo agendamento e emite o evento para o componente pai
+    this.monthSchedule.scheduledAppointments.push(saved);
+    this.onScheduleClient.emit(saved);
+    this.buildTable();
+    form.resetForm();
+    this.newSchedule = { startAt: undefined, endAt: undefined, clientId: undefined };
   }
 
   requestDelete(schedule: ClientScheduleAppointmentModel) {
@@ -128,32 +150,37 @@ export class ScheduleCalendarComponent implements OnDestroy, AfterViewInit, OnCh
       { title: 'Exclusão de agendamento', content: 'Confirma a exclusão do agendamento?' }
     ).subscribe(result => {
       if (result) {
-        this.onConfirmDelete.emit(schedule)
-        const updatedeList = this.dataSource.data.filter(c => c.id !== schedule.id)
-        this.dataSource = new MatTableDataSource<ClientScheduleAppointmentModel>(updatedeList)
+        this.onConfirmDelete.emit(schedule);
+        const updatedList = this.dataSource.data.filter(c => c.id !== schedule.id);
+        this.dataSource = new MatTableDataSource<ClientScheduleAppointmentModel>(updatedList);
         if (this.paginator) {
-          this.dataSource.paginator = this.paginator
+          this.dataSource.paginator = this.paginator;
         }
       }
-    })
+    });
   }
 
   onTimeChange(time: Date) {
-    const endAt = new Date(time)
-    endAt.setHours(time.getHours() + 1)
-    this.newSchedule.endAt = endAt
+    const endAt = new Date(time);
+    endAt.setHours(time.getHours() + 1);
+    this.newSchedule.endAt = endAt;
   }
 
   private buildTable() {
+    // Se monthSchedule ou scheduledAppointments não estiverem definidos, cria uma tabela vazia.
+    if (!this.monthSchedule || !this.monthSchedule.scheduledAppointments) {
+      this.dataSource = new MatTableDataSource<ClientScheduleAppointmentModel>([]);
+      return;
+    }
+
     const appointments = this.monthSchedule.scheduledAppointments.filter((a: { day: number; }) =>
       this.monthSchedule.year === this._selected.getFullYear() &&
       this.monthSchedule.month - 1 === this._selected.getMonth() &&
       a.day === this._selected.getDate()
-    )
+    );
     this.dataSource = new MatTableDataSource<ClientScheduleAppointmentModel>(appointments);
     if (this.paginator) {
-      this.dataSource.paginator = this.paginator
+      this.dataSource.paginator = this.paginator;
     }
   }
-
 }
